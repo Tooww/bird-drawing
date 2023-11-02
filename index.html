@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>I F LOVE BIRD</title>
+  </head>
+  <style>
+    canvas {
+      border: 4px solid black; /* Couleur et épaisseur de la bordure du canvas */
+    }
+  </style>
+  <body>
+    <h1>I F LOVE BIRD</h1>
+    <canvas id="canvas_bird" width="28" height="28"></canvas>
+    <canvas id="tempCanvas" width="28" height="28"></canvas>
+    <button id="clearButton">CLEAR</button>
+    <div id="probaDisplay"></div>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+
+
+
+    <script>
+    
+      const canvas = document.getElementById('canvas_bird') // Récupérer le canvas
+      const context = canvas.getContext("2d"); // Récupérer le contexte du canvas
+      console.log("=== Context", context) // Afficher le contexte dans la console
+
+
+
+      const softmax = (data) => {
+        const exps = data.map((value) => Math.exp(value))
+        const sumExps = exps.reduce((acc, val) => acc + val)
+        return exps.map((exp) => exp / sumExps)
+      }
+
+     
+      
+      
+      // Définir la couleur du contour
+      context.strokeStyle = "black"; 
+      const clearButton = document.getElementById("clearButton");
+
+      clearButton.addEventListener("click", function() {
+      // Efface le contenu du canvas en le réinitialisant à son état initial (blanc)
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      });
+
+
+      let isDrawing = false;
+      let probas;
+
+      canvas.addEventListener("mousedown", (e) => {
+        isDrawing = true;
+        context.beginPath();
+        context.moveTo(e.clientX - canvas.offsetLeft, e.clientY - canvas.offsetTop);
+      });
+
+      canvas.addEventListener("mousemove", (e) => {
+        if (isDrawing) {
+          context.lineTo(e.clientX - canvas.offsetLeft, e.clientY - canvas.offsetTop);
+          context.stroke();
+        }
+      });
+
+      canvas.addEventListener("mouseup", () => {
+        isDrawing = false;
+      });
+
+      canvas.addEventListener("mouseout", () => {
+        isDrawing = false;
+      });
+
+      
+
+      const probaDisplay = document.getElementById('probaDisplay');
+
+      
+
+
+      
+      // Appelez la fonction de mise à jour après que l'utilisateur ait terminé de dessiner
+      //canvas.addEventListener("mouseup", performInferenceAndUpdateResult);
+      //canvas.addEventListener("mouseout", performInferenceAndUpdateResult);
+
+      canvas.addEventListener("mouseup", async () => {
+        await main(); // Wait for the inference to complete
+        performInferenceAndUpdateResult();
+      });
+
+      canvas.addEventListener("mouseout", async () => {
+        await main(); // Wait for the inference to complete
+        performInferenceAndUpdateResult();
+      });
+
+      const data = [];
+
+      
+
+
+      
+      const main = async () => {
+        const session = await ort.InferenceSession.create('./bird.onnx') // Load the ONNX model file
+        const data = getImgData(); // Get the image data
+        console.log("=== Data", data) // Print the data to the console
+        const inputTensor = new ort.Tensor('float32', data, [1, 1, 28, 28]) // Create an input Tensor object from the data
+        const result = await session.run({ 'input': inputTensor }) // Run the model with Tensor inputs and get the result
+        const logits = result.output.data // Get the model output
+        
+        probas = softmax(logits) // Apply softmax to get probabilities 
+        console.log("=== Result", probas) // Print the result to the console
+        
+
+      }
+
+      
+
+      const getImgData = () => {
+            // Create a temporary canvas to draw a downscaled image.
+            const tempCanvas = document.createElement('canvas');
+            const tempContext = tempCanvas.getContext('2d');
+            tempCanvas.width = 28;
+            tempCanvas.height = 28;
+            console.log("=== TempCanvas", tempCanvas)
+
+            // Draw the original canvas image to the temporary canvas, effectively resizing it.
+            tempContext.drawImage(canvas, 0, 0, 28, 28);
+            console.log("=== Canvas", canvas)
+            console.log("=== TempContext", tempContext)
+            // Now, extract the image data from the temporary canvas.
+            const imageData = tempContext.getImageData(0, 0, 28, 28);
+            console.log("=== ImageData", imageData)
+            const data = [];
+            for (let i = 0; i < imageData.data.length; i += 4) {
+                const gray = (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3; // Average grayscale value
+                data.push(gray); // Data normalization
+            }
+            console.log("=== ImageData2", imageData)
+            console.log("=== Data2", data)
+            return data;
+        };
+
+      
+
+      function data_update() {
+        data.length = 0; // Réinitialisez le tableau 'data' pour supprimer les anciennes valeurs
+        getImgData(); // Obtenez les données de l'image 
+        const imageData = context.getImageData(0, 0, 280, 280).data;
+        
+        for (let i = 0; i < imageData.length; i += 4) {
+          const grayValue = (imageData[i] + imageData[i + 1] + imageData[i + 2]) / 3;
+          const normalizedValue = (grayValue - 0.1307) / 0.3081;
+          data.push(normalizedValue);
+        
+
+        }
+      }
+
+       
+
+
+      function performInferenceAndUpdateResult() {
+        
+
+        data_update(); // Mettez à jour les données avant l'inférence
+        main(); // Effectuez l'inférence
+
+        // Mettez à jour l'affichage des probabilités
+        const threshold = 0.5;
+        const predictedClass = probas[1] > threshold ? 1 : 0; 
+
+        // Affichez les probabilités en temps réel
+        probaDisplay.textContent = `Probabilité de la classe 0: ${probas[0].toFixed(4)}, Probabilité de la classe 1: ${probas[1].toFixed(4)}`;
+      }
+
+    
+
+    </script>
+  </body>
+</html>
